@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import date, datetime
@@ -14,7 +15,7 @@ from wa.session import LoggedOut, WhatsAppError, open_chat, open_page, profile_p
 from wa.text import chunk_text, md_to_whatsapp
 
 REPO_ROOT = Path.cwd()
-MEDIA_ROOT = REPO_ROOT / "baseline" / "recovery-evidence" / "whatsapp"
+MEDIA_ROOT = Path(os.environ.get("WA_MEDIA_ROOT") or REPO_ROOT / "baseline/recovery-evidence/whatsapp")
 
 
 def _parser() -> argparse.ArgumentParser:
