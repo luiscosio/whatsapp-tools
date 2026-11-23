@@ -39,9 +39,10 @@ OUTGOING_JS = """
 (needle) => [...document.querySelectorAll('#main [role="row"]')]
   .filter(r => r.querySelector('[data-id]'))
   .filter(r => r.querySelector('.message-out, [data-icon="tail-out"], [data-icon^="msg-"]'))
-  .filter(r => !needle || (r.innerText || '').includes(needle))
+
   .map(r => ({
     id: r.querySelector('[data-id]').getAttribute('data-id') || '',
+    matches: !needle || (r.innerText || '').includes(needle),
     icons: [...r.querySelectorAll('[aria-label],[data-icon]')]
       .map(e => (e.getAttribute('aria-label') || e.getAttribute('data-icon') || '').trim().toLowerCase()),
   }))
@@ -88,8 +89,11 @@ def confirm_sent(page, needle: str, previous: set[str], timeout: float) -> None:
     deadline = time.monotonic() + timeout
     last = "no new row"
     while time.monotonic() < deadline:
-        for row in reversed(_outgoing(page, needle)):
-            if not row["id"] or row["id"] in previous:
+        rows = _outgoing(page, needle)
+        # A virtualized history can prepend previously unseen, already-ticked rows.
+        last_seen = max((i for i, row in enumerate(rows) if row["id"] in previous), default=-1)
+        for row in reversed(rows[last_seen + 1 :]):
+            if not row["id"] or not row["matches"]:
                 continue
             icons = [i for i in row["icons"] if i]
             joined = " ".join(icons)
@@ -105,7 +109,7 @@ def confirm_sent(page, needle: str, previous: set[str], timeout: float) -> None:
 
 def send_chunk(page, chunk: str) -> None:
     needle = match_probe(chunk)
-    previous = {r["id"] for r in _outgoing(page, needle)}
+    previous = {r["id"] for r in _outgoing(page, "")}
     page.click(first_selector(page, "composer"))
     _type_lines(page, chunk)
     try:

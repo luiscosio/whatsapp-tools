@@ -25,7 +25,12 @@ def dispatch(request, live=False):
         raise ValueError("A send requires --yes")
     if op == "login":
         return str(
-            session.login(profile, timeout_ms=request.get("timeout_ms", 300_000), browser_channel=channel)
+            session.login(
+                profile,
+                timeout_ms=request.get("timeout_ms", 300_000),
+                browser_channel=channel,
+                qr_image=request.get("qr_image"),
+            )
         )
     if op == "check":
         with session.open_page(

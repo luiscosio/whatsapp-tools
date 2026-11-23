@@ -164,14 +164,21 @@ def open_page(profile: Path, headless: bool = True, *, browser_channel="chrome",
         yield page
 
 
-def login(profile=None, *, timeout_ms=300_000, browser_channel="chrome"):
+def login(profile=None, *, timeout_ms=300_000, browser_channel="chrome", qr_image=None):
     from .browser import session_page
 
     folder = resolve_profile(profile)
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     with session_page(folder, headless=False, browser_channel=browser_channel) as page:
         page.goto(WEB_URL, wait_until="domcontentloaded", timeout=LOAD_TIMEOUT)
-        page.locator("#pane-side").wait_for(state="visible", timeout=timeout_ms)
+        chats = page.locator("#pane-side")
+        if qr_image:
+            qr = page.locator(", ".join(SELECTORS["qr"])).first
+            chats.or_(qr).first.wait_for(state="visible", timeout=timeout_ms)
+            if qr.is_visible() and not chats.is_visible():
+                qr.screenshot(path=str(qr_image))
+                os.chmod(qr_image, 0o600)
+        chats.wait_for(state="visible", timeout=timeout_ms)
     return folder
 
 
