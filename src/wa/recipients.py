@@ -278,6 +278,9 @@ def _header_matches(titles: list[str], *, chat: str, label: str, digits: str | N
     matter) or the saved contact name, which is accepted when it equals the
     configured `chat` or `label`.
     """
+    titles = [unicodedata.normalize("NFC", value) for value in titles]
+    chat = unicodedata.normalize("NFC", chat)
+    label = unicodedata.normalize("NFC", label)
     if chat and chat in titles:
         return True
     if digits is None:
@@ -561,6 +564,7 @@ def _send_chunks_sync(
     *,
     headless: bool = True,
     browser_channel: str = "chrome",
+    timeout_ms: int = LOAD_TIMEOUT,
 ) -> tuple[dict[int, int], str]:
     """Drive the browser. Returns ({recipient index: chunks sent}, detail).
 
@@ -575,10 +579,10 @@ def _send_chunks_sync(
     #: Chunks reached by recipients whose chat opened but whose send stopped.
     partial: list[int] = []
     with session_page(profile_path(profile_dir), headless=headless, browser_channel=browser_channel) as page:
-        page.goto(WEB_URL, timeout=LOAD_TIMEOUT, wait_until="domcontentloaded")
+        page.goto(WEB_URL, timeout=timeout_ms, wait_until="domcontentloaded")
         if _is_logged_out(page):
             raise WhatsAppLoggedOut(_LOGGED_OUT)
-        _first_match(page, "chat_list", timeout=LOAD_TIMEOUT)
+        _first_match(page, "chat_list", timeout=timeout_ms)
         _dismiss_blocking_dialog(page)
         for index, recipient in enumerate(recipients):
             if index:

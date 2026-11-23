@@ -43,9 +43,17 @@ class LoggedOut(WhatsAppError):
         super().__init__("WhatsApp is logged out: re-link the profile (scan the QR with the phone)")
 
 
+def resolve_profile(option=None):
+    """Resolve older project settings to the linked workstation profile."""
+    path = Path(option or os.environ.get("WA_PROFILE") or DEFAULT_PROFILE).expanduser()
+    old = Path.home() / "Library/CloudStorage/Dropbox/Projects/SL5TF/labwatch/output/labwatch/whatsapp/inbest"
+    if path.resolve() == old:
+        return Path(DEFAULT_PROFILE).expanduser()
+    return path
+
+
 def profile_path(option: str | None) -> Path:
-    raw = option or os.environ.get("WA_PROFILE") or DEFAULT_PROFILE
-    path = Path(raw).expanduser()
+    path = resolve_profile(option)
     if not path.is_dir():
         raise WhatsAppError(f"no WhatsApp profile at {path}")
     return path
@@ -145,23 +153,23 @@ def _launch(p, profile: Path, headless: bool):
 
 
 @contextmanager
-def open_page(profile: Path, headless: bool = True):
+def open_page(profile: Path, headless: bool = True, *, browser_channel="chrome", timeout_ms=LOAD_TIMEOUT):
     """Yield a WhatsApp Web page with the chat list loaded; raise LoggedOut otherwise."""
     from .browser import session_page
 
-    with session_page(profile, headless=headless) as page:
-        page.goto(WEB_URL, timeout=LOAD_TIMEOUT, wait_until="domcontentloaded")
-        first_selector(page, "chat_list", timeout=LOAD_TIMEOUT)
+    with session_page(profile, headless=headless, browser_channel=browser_channel) as page:
+        page.goto(WEB_URL, timeout=timeout_ms, wait_until="domcontentloaded")
+        first_selector(page, "chat_list", timeout=timeout_ms)
         page.keyboard.press("Escape")
         yield page
 
 
-def login(profile=None, *, timeout_ms=300_000):
+def login(profile=None, *, timeout_ms=300_000, browser_channel="chrome"):
     from .browser import session_page
 
-    folder = Path(profile or os.environ.get("WA_PROFILE") or DEFAULT_PROFILE).expanduser()
+    folder = resolve_profile(profile)
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with session_page(folder, headless=False) as page:
+    with session_page(folder, headless=False, browser_channel=browser_channel) as page:
         page.goto(WEB_URL, wait_until="domcontentloaded", timeout=LOAD_TIMEOUT)
         page.locator("#pane-side").wait_for(state="visible", timeout=timeout_ms)
     return folder

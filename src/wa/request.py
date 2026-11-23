@@ -19,12 +19,20 @@ def dispatch(request, live=False):
     profile = request.get("profile")
     headed = request.get("headed", False)
     group = request.get("group")
+    channel = request.get("browser_channel") or "chrome"
     if op in {"send", "batch", "recipients"} and not live:
         raise ValueError("A send requires --yes")
     if op == "login":
-        return str(session.login(profile, timeout_ms=request.get("timeout_ms", 300_000)))
+        return str(
+            session.login(profile, timeout_ms=request.get("timeout_ms", 300_000), browser_channel=channel)
+        )
     if op == "check":
-        with session.open_page(session.profile_path(profile), headless=not headed):
+        with session.open_page(
+            session.profile_path(profile),
+            headless=not headed,
+            browser_channel=channel,
+            timeout_ms=request.get("timeout_ms", session.LOAD_TIMEOUT),
+        ):
             return True
     if op == "recipients":
         counts, detail = recipients._send_chunks_sync(
@@ -32,7 +40,8 @@ def dispatch(request, live=False):
             request["recipients"],
             request["chunks"],
             headless=not headed,
-            browser_channel=request.get("browser_channel", "chrome"),
+            browser_channel=channel,
+            timeout_ms=request.get("timeout_ms", recipients.LOAD_TIMEOUT),
         )
         return {"counts": counts, "detail": detail}
     if not isinstance(group, str) or not group.strip():
@@ -58,6 +67,14 @@ def dispatch(request, live=False):
             report=lambda n, err: reports.append((n, err)),
         )
         return {"ok": ok, "reports": reports}
+    if op == "text-history":
+        with session.chat_page(group, profile, not headed) as page:
+            rows = collect(page, None, request.get("scrolls", 5))
+        return [
+            {"when": m.when.strftime("%m/%d/%Y %I:%M %p") if m.when else "", "who": m.sender, "text": m.text}
+            for m in rows
+            if m.text and m.exact_time
+        ]
     if op == "history":
         return history.read_messages(
             group=group,
