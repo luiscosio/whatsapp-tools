@@ -4,7 +4,7 @@ Read and send WhatsApp Web messages through a dedicated Chrome profile. The Mac 
 `~/Library/Application Support/iNBest/WhatsApp`. Set `WA_PROFILE` or pass `--profile` to
 select another account.
 
-Install the reviewed revision with `uv tool install git+https://github.com/luiscosio/whatsapp-tools.git@<commit>`.
+Install from `main` with `uv tool install git+https://github.com/luiscosio/whatsapp-tools.git@main`.
 This installs `wa` and `inbest-wa`. Schedulers can invoke the absolute executable path from
 `uv tool dir --bin`. A project adapter passes its destination to `inbest-wa request-v1`
 as JSON on standard input. Live sends also require `--yes`.
