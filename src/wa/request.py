@@ -3,6 +3,7 @@
 import json
 import sys
 from contextlib import redirect_stdout
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
@@ -95,7 +96,11 @@ def dispatch(request, live=False):
             repo_root=request.get("repo_root"),
             default_out=request.get("default_out"),
         )
-        return {"count": len(items), "table": files.format_table(items)}
+        return {
+            "count": len(items),
+            "table": files.format_table(items),
+            "files": [asdict(item) for item in items],
+        }
     if op == "delivered":
         with session.chat_page(group, profile, not headed) as page:
             page.wait_for_timeout(request.get("settle_ms", 12_000))
@@ -110,5 +115,5 @@ def run(args):
     request = json.load(sys.stdin)
     with redirect_stdout(sys.stderr):
         result = dispatch(request, live=args.yes)
-    print(json.dumps(result, ensure_ascii=False))
+    print(json.dumps(result, ensure_ascii=False, default=str))
     return 0
