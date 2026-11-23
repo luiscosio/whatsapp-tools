@@ -1,13 +1,12 @@
 """Send ordered text and media to an exact group title."""
 
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from .media import prepared_media
 from .sender import SentUnconfirmed, send_chunk, send_media
 from .session import chat_page
 
-MAX_VIDEO_BYTES = 15 * 1024 * 1024
 BATCH_RETRIES = 2
 
 
@@ -19,63 +18,10 @@ def _probe(text: str) -> str:
     return " ".join(clean.split())[:24]
 
 
-def _fit_video(path: Path) -> Path:
-    """Re-encode a video that's over WhatsApp's limit to 720p."""
-    if path.suffix.lower() not in (".mp4", ".mov", ".webm") or path.stat().st_size <= MAX_VIDEO_BYTES:
-        return path
-    out = path.with_name(path.stem + ".whatsapp.mp4")
-    seconds = float(
-        subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "csv=p=0",
-                str(path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-    )
-    kbps = int(MAX_VIDEO_BYTES * 8 / 1000 / seconds * 0.85) - 96
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-v",
-            "error",
-            "-y",
-            "-i",
-            str(path),
-            "-vf",
-            "scale=-2:720",
-            "-c:v",
-            "libx264",
-            "-b:v",
-            f"{max(kbps, 300)}k",
-            "-maxrate",
-            f"{max(kbps, 300)}k",
-            "-bufsize",
-            f"{2 * max(kbps, 300)}k",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-movflags",
-            "+faststart",
-            str(out),
-        ],
-        check=True,
-    )
-    return out
-
-
 def _send_one(page, group, text, media):
     if media:
-        send_media(page, _fit_video(media), text)
+        with prepared_media(media) as attachment:
+            send_media(page, attachment, text)
     else:
         send_chunk(page, text)
 

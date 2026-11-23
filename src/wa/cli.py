@@ -126,6 +126,8 @@ def cmd_read(args) -> int:
 
 
 def cmd_send(args) -> int:
+    from .media import prepared_media
+
     text = md_to_whatsapp(args.file.read_text())
     chunks = chunk_text(text)
     if not chunks:
@@ -140,8 +142,8 @@ def cmd_send(args) -> int:
             print(f"--- message {n}/{len(chunks)} ---\n{chunk}")
         return 0
     profile = profile_path(args.profile)
-    with open_page(profile, headless=not args.headed) as page:
-        sent = sender.send(page, args.chat, chunks, args.media)
+    with prepared_media(args.media) as media, open_page(profile, headless=not args.headed) as page:
+        sent = sender.send(page, args.chat, chunks, media)
     print(f"sent and confirmed: {sent} message(s) to {args.chat!r}")
     return 0
 

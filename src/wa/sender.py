@@ -6,13 +6,13 @@ import re
 import time
 from pathlib import Path
 
+from wa.media import MAX_MEDIA_BYTES
 from wa.session import ACTION_TIMEOUT, WhatsAppError, first_selector, open_chat
 from wa.text import match_probe
 
 CONFIRM_TIMEOUT = 60  # seconds for WhatsApp to mark a message sent
 MEDIA_TIMEOUT = 240  # a large upload takes longer
 CHUNK_DELAY = 4.0  # bursts look like automation and WhatsApp silently refuses later chunks
-MAX_MEDIA_BYTES = 16 * 1024 * 1024
 CAPTION_LIMIT = 1000
 
 # WhatsApp's own per-message status, matched as whole tokens (substring tests
