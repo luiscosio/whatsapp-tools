@@ -9,7 +9,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from .session import WhatsAppError, _launch, prepare_profile
+from .session import WhatsAppError, _launch, _lock_target, prepare_profile
 
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 
@@ -57,13 +57,26 @@ def _connect(pw, profile):
         raise
 
 
+def _close_browser(browser, profile):
+    browser.new_browser_cdp_session().send("Browser.close")
+    deadline = time.monotonic() + 10
+    while (profile / "SingletonLock").is_symlink() and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
 def _native_chrome(pw, profile, headless):
     browser = _connect(pw, profile)
+    worker = profile / ".whatsapp-tools-headless.pid"
     if browser:
         agent = browser.new_browser_cdp_session().send("Browser.getVersion")["userAgent"]
-        if ("HeadlessChrome/" in agent) != headless:
+        if ("HeadlessChrome/" in agent) == headless:
+            return browser, False
+        owner = _lock_target(profile)
+        if headless or not (owner and worker.is_file() and worker.read_text().strip() == str(owner[1])):
             raise WhatsAppError("Close the dedicated WhatsApp browser before switching display modes.")
-        return browser, False
+        # An explicit window or QR request can take over our idle background worker.
+        _close_browser(browser, profile)
+        worker.unlink(missing_ok=True)
     prepare_profile(profile)
     proc = subprocess.Popen(
         [
@@ -73,7 +86,7 @@ def _native_chrome(pw, profile, headless):
             "--remote-debugging-address=127.0.0.1",
             "--no-first-run",
             "--no-default-browser-check",
-            *(["--headless=new"] if headless else ["--no-startup-window"]),
+            *(["--headless=new", "about:blank"] if headless else ["--no-startup-window"]),
         ],
         start_new_session=True,
         stdin=subprocess.DEVNULL,
@@ -84,6 +97,8 @@ def _native_chrome(pw, profile, headless):
     while time.monotonic() < deadline:
         browser = _connect(pw, profile)
         if browser:
+            if headless:
+                worker.write_text(str(proc.pid))
             return browser, True
         if proc.poll() is not None:
             break
@@ -103,11 +118,8 @@ def session_page(profile, *, headless=True, browser_channel="chrome"):
                     page.bring_to_front()
                 yield page
             finally:
-                if owned:
-                    browser.new_browser_cdp_session().send("Browser.close")
-                    deadline = time.monotonic() + 10
-                    while (profile / "SingletonLock").is_symlink() and time.monotonic() < deadline:
-                        time.sleep(0.05)
+                if owned and not headless:
+                    _close_browser(browser, profile)
                 else:
                     page.close()
         else:

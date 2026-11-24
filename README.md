@@ -21,8 +21,9 @@ The send command previews the message. Add `--yes` to send approved text. Use `-
 image or video. The tool stops after an unconfirmed send. Check the conversation before retrying.
 
 Live jobs run headlessly by default. QR linking opens a dedicated window. On macOS both modes
-use the same Chrome executable and profile. A filesystem lock serializes jobs. The tool closes
-the Chrome process it started when the job finishes. Store downloads outside source control.
+use the same Chrome executable and profile. A filesystem lock serializes jobs. Routine jobs reuse one detached headless process per profile and close their own tabs.
+An explicit QR login can switch that worker to a visible window. Close any manually opened
+WhatsApp Chrome window when you want the headless worker to resume. Store downloads outside source control.
 
 ## Development
 

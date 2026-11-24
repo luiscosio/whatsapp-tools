@@ -36,7 +36,7 @@ def test_default_native_launch_has_no_window(monkeypatch, tmp_path):
     monkeypatch.setattr(
         browser.subprocess,
         "Popen",
-        lambda args, **kwargs: calls.append(args) or SimpleNamespace(poll=lambda: None),
+        lambda args, **kwargs: calls.append(args) or SimpleNamespace(pid=42, poll=lambda: None),
     )
     browser._native_chrome(None, tmp_path, True)
     assert "--headless=new" in calls[0]
@@ -60,3 +60,34 @@ def test_historical_rows_survive_virtualization(monkeypatch):
     result = history.read_messages(group="Example", max_scrolls=2)
     assert result["messages"][0]["date"] == "2026-11-19"
     assert result["messages"][0]["text"] == "Example"
+
+
+def test_manual_session_is_preserved_on_a_headless_request(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    active = Mock()
+    active.new_browser_cdp_session.return_value.send.return_value = {"userAgent": "Chrome/150"}
+    monkeypatch.setattr(browser, "_connect", lambda *_: active)
+    with pytest.raises(WhatsAppError, match="Close the dedicated"):
+        browser._native_chrome(None, tmp_path, True)
+    assert active.new_browser_cdp_session.return_value.send.call_count == 1
+
+
+def test_owned_headless_session_closes_only_its_tab(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    from pathlib import Path
+    from unittest.mock import Mock
+
+    active = Mock()
+    page = Mock()
+    active.contexts = [Mock()]
+    active.contexts[0].new_page.return_value = page
+    monkeypatch.setattr(browser.sys, "platform", "darwin")
+    monkeypatch.setattr(browser, "CHROME", Path(__file__))
+    monkeypatch.setattr(browser, "sync_playwright", lambda: nullcontext(None))
+    monkeypatch.setattr(browser, "_native_chrome", lambda *_: (active, True))
+    with browser.session_page(tmp_path):
+        pass
+    page.close.assert_called_once()
+    page.bring_to_front.assert_not_called()
+    active.new_browser_cdp_session.assert_not_called()
