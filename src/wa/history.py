@@ -1,9 +1,25 @@
 """Read visible history and retain undated rows and completeness information."""
 
+import time
 from datetime import date
 
 from . import files
 from .session import chat_page
+
+# WhatsApp renders these controls outside message bodies when a linked device
+# is waiting for its phone. A group's own messages cannot set this state.
+SYNC_STATE_JS = """() => {
+    const controls = document.querySelectorAll('#main button, #main [role="button"]');
+    for (const el of controls) {
+        if (!el.getClientRects().length || el.closest('[data-id], [data-pre-plain-text]')) continue;
+        const t = el.innerText || '';
+        if (/syncing paused|open whatsapp on your phone|sincronización en pausa|abre whatsapp en tu/i.test(t)) return 'phone_sync_paused';
+        if (/syncing older messages|sincronizando mensajes anteriores/i.test(t)) return 'history_syncing';
+        if (/older messages.*phone|mensajes anteriores.*teléfono/i.test(t)) return 'older_history_on_phone';
+    }
+    return '';
+}"""
+SYNC_WAIT_SECONDS = 120
 
 
 def read_messages(*, group, profile=None, since=None, max_scrolls=100, headed=False):
@@ -14,7 +30,7 @@ def read_messages(*, group, profile=None, since=None, max_scrolls=100, headed=Fa
     idle = 0
     stop = "scroll_limit"
     with chat_page(target, profile, not headed) as page:
-        page.wait_for_function(files.SCROLLER_READY_JS, timeout=60_000)
+        deadline = time.monotonic() + SYNC_WAIT_SECONDS
         page.evaluate("""() => {
             const list = [...document.querySelectorAll('#main *')]
                 .filter(e => e.scrollHeight > e.clientHeight + 50 &&
@@ -23,9 +39,10 @@ def read_messages(*, group, profile=None, since=None, max_scrolls=100, headed=Fa
             if (list) list.scrollTop = list.scrollHeight;
         }""")
         page.wait_for_timeout(900)
-        for _ in range(max_scrolls):
+        scrolls = 0
+        while scrolls < max_scrolls:
             rows = page.evaluate("""() => [...document.querySelectorAll('#main [role="row"]')].map(r => ({
-                id: r.querySelector('[data-id]')?.getAttribute('data-id'),
+                id: r.getAttribute('data-id') || r.querySelector('[data-id]')?.getAttribute('data-id'),
                 pre: r.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '',
                 text: r.innerText || ''})).filter(r => r.id)""")
             fresh = 0
@@ -50,12 +67,14 @@ def read_messages(*, group, profile=None, since=None, max_scrolls=100, headed=Fa
                 break
             position = page.evaluate(files.SCROLL_UP_JS)
             idle = 0 if fresh else idle + 1
-            if position == -1:
-                stop = "scroller_unavailable"
+            if position == -1 or (position == 0 and idle >= 6):
+                sync = page.evaluate(SYNC_STATE_JS)
+                if (sync or not known) and time.monotonic() < deadline:
+                    page.wait_for_timeout(2000)
+                    continue
+                stop = sync or ("visible_history_start" if known else "no_visible_messages")
                 break
-            if position == 0 and idle >= 6:
-                stop = "visible_history_start"
-                break
+            scrolls += 1
             page.wait_for_timeout(900)
     items = [
         row
